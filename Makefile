@@ -178,8 +178,14 @@ $(RELEASE_DIR):
 build-release-artifacts: build-cluster-templates build-infra-yaml build-metadata-yaml build-host-agent-binary
 
 build-cluster-templates: $(RELEASE_DIR) cluster-templates
-	cp $(BYOH_TEMPLATES)/v1beta1/cluster-template.yaml $(RELEASE_DIR)/cluster-template.yaml
-	sed -i -e 1,20d $(RELEASE_DIR)/cluster-template.yaml
+	cp $(BYOH_TEMPLATES)/v1beta1/cluster-template.yaml $(RELEASE_DIR)/cluster-template-docker.yaml
+	sed -i -e 1,20d $(RELEASE_DIR)/cluster-template-docker.yaml
+	cp $(RELEASE_DIR)/cluster-template-docker.yaml $(RELEASE_DIR)/cluster-template.yaml
+	sed -i '/kubeletExtraArgs:/d' $(RELEASE_DIR)/cluster-template.yaml
+	sed -i '/cgroup-driver:/d' $(RELEASE_DIR)/cluster-template.yaml
+	sed -i '/eviction-hard:/d' $(RELEASE_DIR)/cluster-template.yaml
+	perl -i -p0e 's/    spec:\n      joinConfiguration:\n        nodeRegistration:\n---/    spec: {}\n---/g' $(RELEASE_DIR)/cluster-template.yaml
+
 
 build-infra-yaml:kustomize # Generate infrastructure-components.yaml for the provider
 	cd config/manager && $(KUSTOMIZE) edit set image gcr.io/k8s-staging-cluster-api/cluster-api-byoh-controller=${IMG}
