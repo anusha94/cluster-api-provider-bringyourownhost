@@ -1,0 +1,30 @@
+@startuml
+title: BringYourOwnHost Cluster Create
+
+participant "Operator" as O
+participant "Management Cluster" as MC
+participant "Host Agent" as HA
+participant "OCI Repository" as OR
+
+== Initialize with BYOH Provider ==
+
+O --> MC: clusterctl init --infrastructure byoh
+
+== Register BYO Host ==
+
+O -> HA: Download hostagent binary
+O --> HA: ./byoh-agent --kubeconfig config
+HA --> MC: register & watch byoh CRD
+
+
+== Create BYOH workload cluster ==
+
+O --> MC: kubectl apply -f cluster.yaml
+MC -> MC: creates CRDs\n(byocluster, byomachine...)
+MC -> MC: Update byohost.Status.MachineRef\ncopy bootstrap secret on byoh crd
+OR -> HA: pull BYOH bundle
+HA -> HA: kubeadm init / join
+HA --> MC: set byohost to Ready
+MC -> MC: update providerID\nset cluster to Provisioned
+
+@enduml
