@@ -28,6 +28,8 @@ type ByoClusterSpec struct {
 
 	// BundleLookupTag is the tag of the BYOH bundle to be used
 	BundleLookupTag string `json:"bundleLookupTag,omitempty"`
+
+	InPlaceUpgrade bool `json:"inPlaceUpgrade,omitempty"`
 }
 
 // ByoClusterStatus defines the observed state of ByoCluster

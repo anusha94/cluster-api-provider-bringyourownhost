@@ -252,9 +252,35 @@ func (r *ByoMachineReconciler) reconcileNormal(ctx context.Context, machineScope
 	// then pick one from the host capacity pool
 	if machineScope.ByoHost == nil {
 		logger.Info("Attempting host reservation")
-		if res, err := r.attachByoHost(ctx, machineScope); err != nil {
-			return res, err
+		if machineScope.ByoCluster.Spec.InPlaceUpgrade {
+			logger.Info("In place upgrade")
+			// reattach the same host
+			byoMachines, err := GetByoMachinesInCluster(ctx, machineScope.client, machineScope.ByoMachine.Namespace, machineScope.Cluster.Name)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			for _, byoMachine := range byoMachines {
+				byoHost, err := r.FetchAttachedByoHost(ctx, byoMachine.Name, byoMachine.Namespace)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+
+				if byoHost != nil {
+					if res, err := r.attachExistingByoHost(ctx, machineScope, byoHost); err != nil {
+						return res, err
+					}
+					break
+				}
+			}
+			//	return reconcile.Result{}, nil
+
+		} else {
+			if res, err := r.attachByoHost(ctx, machineScope); err != nil {
+				return res, err
+			}
 		}
+
 		r.Recorder.Eventf(machineScope.ByoHost, corev1.EventTypeNormal, "ByoHostAttachSucceeded", "Attached to ByoMachine %s", machineScope.ByoMachine.Name)
 		r.Recorder.Eventf(machineScope.ByoMachine, corev1.EventTypeNormal, "ByoHostAttachSucceeded", "Attached ByoHost %s", machineScope.ByoHost.Name)
 	}
@@ -489,6 +515,60 @@ func (r *ByoMachineReconciler) attachByoHost(ctx context.Context, machineScope *
 	}
 	logger.Info("Successfully attached Byohost", "byohost", host.Name)
 	machineScope.ByoHost = &host
+	return ctrl.Result{}, nil
+}
+
+func (r *ByoMachineReconciler) attachExistingByoHost(ctx context.Context, machineScope *byoMachineScope, byoHost *infrav1.ByoHost) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("cluster", machineScope.Cluster.Name)
+	var err error
+	if machineScope.ByoHost != nil {
+		return ctrl.Result{}, nil
+	}
+
+	host := byoHost
+
+	byohostHelper, err := patch.NewHelper(host, r.Client)
+	if err != nil {
+		logger.Error(err, "Creating patch helper failed")
+	}
+
+	host.Status.MachineRef = &corev1.ObjectReference{
+		APIVersion: machineScope.ByoMachine.APIVersion,
+		Kind:       machineScope.ByoMachine.Kind,
+		Namespace:  machineScope.ByoMachine.Namespace,
+		Name:       machineScope.ByoMachine.Name,
+		UID:        machineScope.ByoMachine.UID,
+	}
+	// Set the cluster Label
+	hostLabels := host.Labels
+	if hostLabels == nil {
+		hostLabels = make(map[string]string)
+	}
+	hostLabels[clusterv1.ClusterLabelName] = machineScope.ByoMachine.Labels[clusterv1.ClusterLabelName]
+	hostLabels[infrav1.AttachedByoMachineLabel] = machineScope.ByoMachine.Namespace + "." + machineScope.ByoMachine.Name
+	host.Labels = hostLabels
+
+	host.Spec.BootstrapSecret = &corev1.ObjectReference{
+		Kind:      "Secret",
+		Namespace: machineScope.ByoMachine.Namespace,
+		Name:      *machineScope.Machine.Spec.Bootstrap.DataSecretName,
+	}
+	if host.Annotations == nil {
+		host.Annotations = make(map[string]string)
+	}
+	host.Annotations["byoh.infrastructure.cluster.x-k8s.io/you-are-due-for-a-pay-upgrade"] = "true"
+	host.Annotations[infrav1.EndPointIPAnnotation] = machineScope.Cluster.Spec.ControlPlaneEndpoint.Host
+	host.Annotations[infrav1.K8sVersionAnnotation] = strings.Split(*machineScope.Machine.Spec.Version, "+")[0]
+	host.Annotations[infrav1.BundleLookupBaseRegistryAnnotation] = machineScope.ByoCluster.Spec.BundleLookupBaseRegistry
+	host.Annotations[infrav1.BundleLookupTagAnnotation] = machineScope.ByoCluster.Spec.BundleLookupTag
+
+	err = byohostHelper.Patch(ctx, host)
+	if err != nil {
+		logger.Error(err, "failed to patch byohost")
+		return ctrl.Result{}, err
+	}
+	logger.Info("Successfully attached Byohost", "byohost", host.Name)
+	machineScope.ByoHost = host
 	return ctrl.Result{}, nil
 }
 

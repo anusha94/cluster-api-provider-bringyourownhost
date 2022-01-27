@@ -39,8 +39,9 @@ type HostReconciler struct {
 }
 
 const (
-	bootstrapSentinelFile = "/run/cluster-api/bootstrap-success.complete"
-	KubeadmResetCommand   = "kubeadm reset --force"
+	bootstrapSentinelFile      = "/run/cluster-api/bootstrap-success.complete"
+	KubeadmResetCommand        = "kubeadm reset --force"
+	KubeadmResetCleanupCommand = "kubeadm reset phase cleanup-node"
 )
 
 // Reconcile handles events for the ByoHost that is registered by this agent process
@@ -69,6 +70,15 @@ func (r *HostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctr
 	_, ok := hostAnnotations[infrastructurev1beta1.HostCleanupAnnotation]
 	if ok {
 		err = r.hostCleanUp(ctx, byoHost)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	_, ok = hostAnnotations["byoh.infrastructure.cluster.x-k8s.io/you-are-due-for-a-pay-upgrade"]
+	if ok {
+		err = r.hostUpgradeCleanUp(ctx, byoHost)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -224,6 +234,58 @@ func (r *HostReconciler) hostCleanUp(ctx context.Context, byoHost *infrastructur
 	return nil
 }
 
+func (r *HostReconciler) hostUpgradeCleanUp(ctx context.Context, byoHost *infrastructurev1beta1.ByoHost) error {
+	logger := ctrl.LoggerFrom(ctx)
+	logger.Info("cleaning up host for upgrade")
+
+	k8sNodeBootstrapSucceeded := conditions.Get(byoHost, infrastructurev1beta1.K8sNodeBootstrapSucceeded)
+	if k8sNodeBootstrapSucceeded != nil && k8sNodeBootstrapSucceeded.Status == corev1.ConditionTrue {
+		err := r.resetNodeForUpgrade(ctx, byoHost)
+		if err != nil {
+			return err
+		}
+		if r.SkipInstallation {
+			logger.Info("Skipping uninstallation of k8s components")
+		} else {
+			err = r.uninstallk8sComponents(ctx, byoHost)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		logger.Info("Skipping k8s node reset and k8s component uninstallation")
+	}
+	conditions.MarkFalse(byoHost, infrastructurev1beta1.K8sNodeBootstrapSucceeded, infrastructurev1beta1.K8sNodeAbsentReason, clusterv1.ConditionSeverityInfo, "")
+
+	err := r.removeSentinelFile(ctx, byoHost)
+	if err != nil {
+		return err
+	}
+
+	err = r.deleteEndpointIP(ctx, byoHost)
+	if err != nil {
+		return err
+	}
+
+	r.removeUpgradeAnnotations(ctx, byoHost)
+	conditions.MarkFalse(byoHost, infrastructurev1beta1.K8sNodeBootstrapSucceeded, infrastructurev1beta1.K8sNodeAbsentReason, clusterv1.ConditionSeverityInfo, "")
+	return nil
+}
+
+func (r *HostReconciler) resetNodeForUpgrade(ctx context.Context, byoHost *infrastructurev1beta1.ByoHost) error {
+	logger := ctrl.LoggerFrom(ctx)
+	logger.Info("Running kubeadm reset phase cleanup-node")
+
+	err := r.CmdRunner.RunCmd(KubeadmResetCleanupCommand)
+	if err != nil {
+		r.Recorder.Event(byoHost, corev1.EventTypeWarning, "ResetK8sNodeFailed", "k8s Node Reset failed")
+		return errors.Wrapf(err, "failed to exec kubeadm reset")
+	}
+	logger.Info("Kubernetes Node reset completed")
+	r.Recorder.Event(byoHost, corev1.EventTypeNormal, "ResetK8sNodeSucceeded", "k8s Node Reset completed")
+	return nil
+}
+
 func (r *HostReconciler) resetNode(ctx context.Context, byoHost *infrastructurev1beta1.ByoHost) error {
 	logger := ctrl.LoggerFrom(ctx)
 	logger.Info("Running kubeadm reset")
@@ -341,4 +403,12 @@ func (r *HostReconciler) removeAnnotations(ctx context.Context, byoHost *infrast
 
 	// Remove the bundle tag annotation
 	delete(byoHost.Annotations, infrastructurev1beta1.BundleLookupTagAnnotation)
+
+}
+
+func (r *HostReconciler) removeUpgradeAnnotations(ctx context.Context, byoHost *infrastructurev1beta1.ByoHost) {
+	logger := ctrl.LoggerFrom(ctx)
+	logger.Info("Removing annotations")
+
+	delete(byoHost.Annotations, "byoh.infrastructure.cluster.x-k8s.io/you-are-due-for-a-pay-upgrade")
 }

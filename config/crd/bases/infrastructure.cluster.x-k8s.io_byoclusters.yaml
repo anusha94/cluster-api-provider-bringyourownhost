@@ -61,6 +61,8 @@ spec:
                 - host
                 - port
                 type: object
+              inPlaceUpgrade:
+                type: boolean
             type: object
           status:
             description: ByoClusterStatus defines the observed state of ByoCluster
