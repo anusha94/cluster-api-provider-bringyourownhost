@@ -22,9 +22,9 @@ jobs:
       #     go-version: 1.16
 
       - name: Login to Harbor Registry
-        uses: docker/login-action@v1
+        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
         with:
-          registry: projects.registry.vmware.com
+          registry: ${{ env.REGISTRY }}
           username: ${{ secrets.HARBOR_USERNAME }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
