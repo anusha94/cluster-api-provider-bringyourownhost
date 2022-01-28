@@ -19,18 +19,15 @@ jobs:
         with:
           go-version: 1.16
 
-      - name: Login to Harbor Registry
-        uses: docker/login-action@v1
-        with:
-          registry: projects.registry.vmware.com
-          username: ${{ secrets.HARBOR_USERNAME }}
-          password: ${{ secrets.HARBOR_PASSWORD }}
-
       # - name: Login to Harbor Registry
-      #   run: echo "${{ secrets.HARBOR_PASSWORD }}" | docker login projects.registry.vmware.com -u "${{ secrets.HARBOR_USERNAME }}" --password-stdin
+      #   uses: docker/login-action@v1
+      #   with:
+      #     registry: projects.registry.vmware.com
+      #     username: ${{ secrets.HARBOR_USERNAME }}
+      #     password: ${{ secrets.HARBOR_PASSWORD }}
 
       - name: Build Controller Image
         run: IMG="projects.registry.vmware.com/cluster_api_provider_bringyourownhost/cluster-api-byoh-controller:${{ github.ref_name }}" make docker-build
       
-      - name: Push Controller Image
-        run: IMG="projects.registry.vmware.com/cluster_api_provider_bringyourownhost/cluster-api-byoh-controller:${{ github.ref_name }}" make docker-push
+      - name: Login to Harbor Registry
+        run: echo "${{ secrets.HARBOR_PASSWORD }}" | docker login projects.registry.vmware.com -u "${{ secrets.HARBOR_USERNAME }}" --password-stdin ; IMG="projects.registry.vmware.com/cluster_api_provider_bringyourownhost/cluster-api-byoh-controller:${{ github.ref_name }}" make docker-push
