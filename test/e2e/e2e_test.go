@@ -97,17 +97,19 @@ var _ = Describe("When BYOH joins existing cluster [PR-Blocking]", func() {
 			}
 		}()
 
+		os.Setenv("CONTROL_PLANE_ENDPOINT_IP", "172.18.10.151")
 		clusterctl.ApplyClusterTemplateAndWait(ctx, clusterctl.ApplyClusterTemplateAndWaitInput{
 			ClusterProxy: bootstrapClusterProxy,
 			ConfigCluster: clusterctl.ConfigClusterInput{
-				LogFolder:                filepath.Join(artifactFolder, "clusters", bootstrapClusterProxy.GetName()),
-				ClusterctlConfigPath:     clusterctlConfigPath,
-				KubeconfigPath:           bootstrapClusterProxy.GetKubeconfigPath(),
-				InfrastructureProvider:   clusterctl.DefaultInfrastructureProvider,
-				Flavor:                   clusterctl.DefaultFlavor,
-				Namespace:                namespace.Name,
-				ClusterName:              clusterName,
-				KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
+				LogFolder:              filepath.Join(artifactFolder, "clusters", bootstrapClusterProxy.GetName()),
+				ClusterctlConfigPath:   clusterctlConfigPath,
+				KubeconfigPath:         bootstrapClusterProxy.GetKubeconfigPath(),
+				InfrastructureProvider: clusterctl.DefaultInfrastructureProvider,
+				Flavor:                 clusterctl.DefaultFlavor,
+				Namespace:              namespace.Name,
+				ClusterName:            clusterName,
+				KubernetesVersion:      e2eConfig.GetVariable(KubernetesVersion),
+
 				ControlPlaneMachineCount: pointer.Int64Ptr(1),
 				WorkerMachineCount:       pointer.Int64Ptr(1),
 			},
