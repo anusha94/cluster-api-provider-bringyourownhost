@@ -51,14 +51,16 @@ func (bd *bundleDownloader) DownloadFromRepo(
 	downloadByTool func(string, string) error) error {
 
 	downloadPathWithRepo := bd.getBundlePathWithRepo()
-
+	// useless
+	bd.logger.Info("download path with repo", "downloadPathWithRepo", downloadPathWithRepo)
 	err := ensureDirExist(downloadPathWithRepo)
 	defer os.Remove(downloadPathWithRepo)
 	if err != nil {
 		return err
 	}
 
-	bundleDirPath := bd.GetBundleDirPath(k8sVersion, tag)
+	bundleDirPath := bd.GetBundleDirPath(k8sVersion, "v0.1.0_alpha.2")
+	bd.logger.Info("bundle dir path", "path", bundleDirPath)
 
 	// cache hit
 	if checkDirExist(bundleDirPath) {
@@ -80,6 +82,7 @@ func (bd *bundleDownloader) DownloadFromRepo(
 		return err
 	}
 	bundleAddr := bd.getBundleAddr(normalizedOsVersion, k8sVersion, tag)
+	bd.logger.Info("bundle address", "bundle addr", bundleAddr)
 	err = convertError(downloadByTool(bundleAddr, dir))
 	if err != nil {
 		return err
@@ -92,7 +95,7 @@ func (bd *bundleDownloader) downloadByImgpkg(
 	bundleAddr,
 	bundleDirPath string) error {
 
-	bd.logger.Info("Downloading bundle", "from", bundleAddr)
+	bd.logger.Info("Downloading bundle", "repo", bundleAddr)
 
 	var confUI = ui.NewConfUI(ui.NewNoopLogger())
 	defer confUI.Flush()
@@ -127,6 +130,7 @@ func (bd *bundleDownloader) GetBundleDirPath(k8sVersion, tag string) string {
 	// Not storing tag as a subdir of k8s because we can't atomically move
 	// the temp bundle dir to a non-existing dir.
 	// Using "-" instead of ":" because Windows doesn't like the latter
+	tag = "v0.1.0_alpha.2"
 	return fmt.Sprintf("%s-%s", filepath.Join(bd.getBundlePathWithRepo(), k8sVersion), tag)
 }
 
@@ -137,11 +141,13 @@ func GetBundleName(normalizedOsVersion, k8sVersion string) string {
 
 // getBundlePathWithRepo returns the path
 func (bd *bundleDownloader) getBundlePathWithRepo() string {
+	bd.logger.Info("download path", "downloadpath", bd.downloadPath)
 	return filepath.Join(bd.downloadPath, strings.ReplaceAll(bd.repoAddr, "/", "."))
 }
 
 // getBundleAddr returns the exact address to the bundle in the repo.
 func (bd *bundleDownloader) getBundleAddr(normalizedOsVersion, k8sVersion, tag string) string {
+	bd.logger.Info("bundle addr: ", "bundle adddr", bd.repoAddr)
 	return fmt.Sprintf("%s/%s:%s", bd.repoAddr, GetBundleName(normalizedOsVersion, k8sVersion), tag)
 }
 

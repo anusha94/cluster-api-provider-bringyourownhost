@@ -37,8 +37,10 @@ type installer struct {
 // getSupportedRegistry returns a registry with installers for the supported OS and K8s
 func getSupportedRegistry(ob algo.OutputBuilder) registry {
 	reg := newRegistry()
-
+	fmt.Printf("reg : %v", reg)
 	addBundleInstaller := func(osBundle, k8sBundle string, stepProvider algo.K8sStepProvider) {
+		fmt.Printf("os bundle:: %s", osBundle)
+		fmt.Printf("k8s bundle:: %s", k8sBundle)
 		a := algo.BaseK8sInstaller{
 			K8sStepProvider: stepProvider,
 			/* BundlePath: will be set when tag is known */
@@ -52,13 +54,14 @@ func getSupportedRegistry(ob algo.OutputBuilder) registry {
 
 		// BYOH Bundle Repository. Associate bundle with installer
 		linuxDistro := "Ubuntu_20.04.1_x86-64"
-		addBundleInstaller(linuxDistro, "v1.22.3", &algo.Ubuntu20_4K8s1_22{})
+		addBundleInstaller(linuxDistro, "v1.22.*", &algo.Ubuntu20_4K8s1_22{})
 		/*
 		 * PLACEHOLDER - ADD MORE K8S VERSIONS HERE
 		 */
 
 		// Match concrete os version to repository os version
 		reg.AddOsFilter("Ubuntu_20.04.*_x86-64", linuxDistro)
+		reg.AddK8sFilter("v1.22.*")
 		/*
 		 * PLACEHOLDER - POINT MORE DISTRO VERSIONS
 		 */
@@ -84,7 +87,7 @@ func (bd *bundleDownloader) DownloadOrPreview(os, k8s, tag string) error {
 		bd.logger.Info("Running in preview mode, skip bundle download")
 		return nil
 	}
-
+	tag = "v0.1.0_alpha.2"
 	return bd.Download(os, k8s, tag)
 }
 
@@ -119,6 +122,7 @@ func newUnchecked(currentOs, downloadPath string, logger logr.Logger, outputBuil
 
 	reg := getSupportedRegistry(outputBuilder)
 	if len(reg.ListK8s(currentOs)) == 0 {
+		fmt.Printf("returning err\n")
 		return nil, ErrOsK8sNotSupported
 	}
 
@@ -131,7 +135,7 @@ func newUnchecked(currentOs, downloadPath string, logger logr.Logger, outputBuil
 
 // setBundleRepo sets the repo from which the bundle will be downloaded.
 func (i *installer) setBundleRepo(bundleRepo string) {
-	i.bundleDownloader.repoAddr = bundleRepo
+	i.bundleDownloader.repoAddr = "projects.registry.vmware.com/cluster_api_provider_bringyourownhost"
 }
 
 // Install installs the specified k8s version on the current OS
@@ -170,6 +174,7 @@ func (i *installer) getAlgoInstallerWithBundle(k8sVer, tag string) (osk8sInstall
 
 	algoInst, osBundle := i.algoRegistry.GetInstaller(i.detectedOs, k8sVer)
 	if algoInst == nil {
+		fmt.Printf("return err from here\n")
 		return nil, ErrOsK8sNotSupported
 	}
 	i.logger.Info("Current OS will be handled as", "OS", osBundle)
