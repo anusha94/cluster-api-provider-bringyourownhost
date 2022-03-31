@@ -1,8 +1,7 @@
 name: e2e-suite
 
 on:
-  pull_request:
-    branches: [ main ]
+  push:
 
 jobs:
   e2e-pr-blocking:
