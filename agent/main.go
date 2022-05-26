@@ -169,7 +169,7 @@ func main() {
 		logger.Error(err, "error creating a new k8s client")
 		return
 	}
-
+	// random comment
 	hostName, err := os.Hostname()
 	if err != nil {
 		logger.Error(err, "could not determine hostname")
