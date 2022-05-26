@@ -1,12 +1,17 @@
 name: e2e-suite
 
 on:
-  pull_request_review:
-    types: ['submitted']
+  pull_request:
+    branches: [ main ]
+    types:
+      - labeled
 
 jobs:
   e2e-all-tests:
     runs-on: ubuntu-latest
+    with:
+      one_of: major,minor,patch
+      repo_token: ${{ secrets.GITHUB_TOKEN }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -25,11 +30,5 @@ jobs:
     - name: Set netfilter conntrack max
       run: sudo sysctl -w net.netfilter.nf_conntrack_max=131072
 
-    - id: 'reviews'
-        uses: 'jrylan/github-action-reviews-counter@main'
-        with:
-          repo-token: '${{ secrets.GITHUB_TOKEN }}'
-    - # Conditionally run the next step
-        if: 'steps.reviews.outputs.approved >= 1 && steps.reviews.outputs.changes_requested == 0'
-        - name: Run all e2e tests
-          run: yes | make test-e2e
+    - name: Run all e2e tests
+      run: yes | make test-e2e
