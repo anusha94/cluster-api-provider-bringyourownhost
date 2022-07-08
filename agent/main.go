@@ -101,15 +101,16 @@ func setupflags() {
 
 func setupTemplateParser() *cloudinit.TemplateParser {
 	var templateParser *cloudinit.TemplateParser
-	if registration.LocalHostRegistrar.ByoHostInfo.DefaultNetworkInterfaceName == "" {
-		templateParser = nil
-	} else {
-		templateParser = &cloudinit.TemplateParser{
-			Template: registration.HostInfo{
-				DefaultNetworkInterfaceName: registration.LocalHostRegistrar.ByoHostInfo.DefaultNetworkInterfaceName,
-			},
-		}
-	}
+	// if registration.LocalHostRegistrar.ByoHostInfo.DefaultNetworkInterfaceName == "" {
+	// 	templateParser = nil
+	// } else {
+	// 	templateParser = &cloudinit.TemplateParser{
+	// 		Template: registration.HostInfo{
+	// 			DefaultNetworkInterfaceName: registration.LocalHostRegistrar.ByoHostInfo.DefaultNetworkInterfaceName,
+	// 		},
+	// 	}
+	// }
+	templateParser = &cloudinit.TemplateParser{}
 	return templateParser
 }
 

@@ -201,7 +201,7 @@ var _ = Describe("Agent", func() {
 			}, time.Second*2).Should(BeTrue())
 		})
 
-		It("should fetch networkstatus when register the BYOHost with the management cluster", func() {
+		XIt("should fetch networkstatus when register the BYOHost with the management cluster", func() {
 			byoHostLookupKey := types.NamespacedName{Name: hostName, Namespace: ns.Name}
 			defaultIP, err := gateway.DiscoverInterface()
 			Expect(err).NotTo(HaveOccurred())

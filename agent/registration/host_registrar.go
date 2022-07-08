@@ -73,8 +73,14 @@ func (hr *HostRegistrar) Register(hostName, namespace string, hostLabels map[str
 		}
 	}
 
+	helper, err := patch.NewHelper(byoHost, hr.K8sClient)
+	if err != nil {
+		return err
+	}
+	return helper.Patch(ctx, byoHost)
+
 	// run it at startup or reboot
-	return hr.UpdateHost(ctx, byoHost)
+	// return hr.UpdateHost(ctx, byoHost)
 }
 
 // UpdateHost updates the network interface and host platform details status for the host
