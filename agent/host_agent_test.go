@@ -7,7 +7,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -31,7 +30,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 )
@@ -810,55 +808,55 @@ kovW9X7Ook/tTW0HyX6D6HRciA==
 	})
 })
 
-var _ = Describe("Agent Unit Tests", func() {
-	Context("When the handleBootstrap func is called", func() {
-		var (
-			bootstrapKubeConf *os.File
-			err               error
-		)
-		BeforeEach(func() {
-			bootstrapKubeConf, err = ioutil.TempFile("", "bootstrap-kubeconfig")
-			Expect(err).NotTo(HaveOccurred())
-			bootstrapKubeConfig = bootstrapKubeConf.Name()
-		})
-		AfterEach(func() {
-			Expect(os.Remove(bootstrapKubeConf.Name())).ShouldNot(HaveOccurred())
-		})
-		It("should return if bootstrap kubeconfig is not valid", func() {
-			testbootstrapKubeconfigInvalid := []byte(`abc`)
+// var _ = Describe("Agent Unit Tests", func() {
+// 	Context("When the handleBootstrap func is called", func() {
+// 		var (
+// 			bootstrapKubeConf *os.File
+// 			err               error
+// 		)
+// 		BeforeEach(func() {
+// 			bootstrapKubeConf, err = ioutil.TempFile("", "bootstrap-kubeconfig")
+// 			Expect(err).NotTo(HaveOccurred())
+// 			bootstrapKubeConfig = bootstrapKubeConf.Name()
+// 		})
+// 		AfterEach(func() {
+// 			Expect(os.Remove(bootstrapKubeConf.Name())).ShouldNot(HaveOccurred())
+// 		})
+// 		It("should return if bootstrap kubeconfig is not valid", func() {
+// 			testbootstrapKubeconfigInvalid := []byte(`abc`)
 
-			_, err = bootstrapKubeConf.Write(testbootstrapKubeconfigInvalid)
-			Expect(err).NotTo(HaveOccurred())
-			err = handleBootstrapFlow(klogr.New(), "test-host")
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring("client config load failed"))
-		})
-		It("should return if hostName is not valid", func() {
-			testbootstrapKubeconfigValid := []byte(`
-apiVersion: v1
-kind: Config
-clusters:
-- cluster:
-    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUN5RENDQWJDZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRFNU1URXlNREF3TkRrME1sb1hEVEk1TVRFeE56QXdORGswTWxvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBTXFRCmN0RUN6QTh5RlN1Vll1cE9VWWdyVG1mUWVLZS85QmFEV2FnYXE3b3c5K0kySXZzZldGdmxyRDhRUXI4c2VhNnEKeGpxN1RWNjdWYjRSeEJhb1lEQSt5STV2SWN1aldVeFVMdW42NGx1M1E2aUMxc2oyVW5tVXBJZGdhelJYWEVrWgp2eEE2RWJBbm94QTArbEJPbjFDWldsMjNJUTRzNzBvMmhaN3dJcC92ZXZCODhSUlJqcXR2Z2M1ZWxzanNibURGCkxTN0wxWnV5ZThjNmdTOTNiUitWalZtU0lmcjFJRXEwNzQ4dElJeVhqQVZDV1BWQ3Z1UDQxTWxmUGMvSlZwWkQKdUQyK3BPNlpZUkVjZEFuT2YyZUQ0L2VMT01La280TDFkU0Z5OUpLTTVQTG5PQzBaazBBWU9kMXZTOERUQWZ4agpYUEVJWThPQllGaGxzeGY0VEU4Q0F3RUFBYU1qTUNFd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFEZ2dFQkFIL09ZcTh6eWwxK3pTVG11b3czeUkvMTVQTDEKZGw4aEI3SUtuWk5XbUMvTFRkbS8rbm9oM1NiMUlkUnY2SGtLZy9HVW4wVU11UlVuZ0xoanUzRU80b3pKUFFjWApxdWF4emdtVEtOV0o2RXJEdlJ2V2hHWDBaY2JkQmZaditkb3d5UnF6ZDVubEo0OWhDK05ydEZGUXE2UDA1QlluCjdTZW1ndXFlWG1Yd0lqMlNhKzFEZVI2bFJtOW84c2hBWWpueVRoVUZxYU1uMThrSTNTQU5KNXZrLzNERnJQRU8KQ0tDOUV6Rmt1Mmt1eGcyZE0xMlBiUkdaUTJvMEs2SEVaZ3JySUtUUE95M29jYjhyOU0wYVNGaGpPVi9OcUdBNApTYXVwWFNXNlhmdklpL1VIb0liVTNwTmNzblVKR25RZlF2aXA5NVhLay9ncWNVcittNTB2eGd1bXh0QT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQ==
-    server: https://cluster-a.com
-  name: cluster-a
-contexts:
-- context:
-    cluster: cluster-a
-    namespace: ns-a
-    user: user-a
-  name: context-a
-current-context: context-a
-users:
-- name: user-a
-  user:
-    token: mytoken-a
-`)
-			_, err = bootstrapKubeConf.Write(testbootstrapKubeconfigValid)
-			Expect(err).NotTo(HaveOccurred())
-			err = handleBootstrapFlow(klogr.New(), "")
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring("kubeconfig generation failed: hostname is not valid"))
-		})
-	})
-})
+// 			_, err = bootstrapKubeConf.Write(testbootstrapKubeconfigInvalid)
+// 			Expect(err).NotTo(HaveOccurred())
+// 			err = handleBootstrapFlow(klogr.New(), "test-host")
+// 			Expect(err).Should(HaveOccurred())
+// 			Expect(err.Error()).Should(ContainSubstring("client config load failed"))
+// 		})
+// 		It("should return if hostName is not valid", func() {
+// 			testbootstrapKubeconfigValid := []byte(`
+// apiVersion: v1
+// kind: Config
+// clusters:
+// - cluster:
+//     certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUN5RENDQWJDZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRFNU1URXlNREF3TkRrME1sb1hEVEk1TVRFeE56QXdORGswTWxvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBTXFRCmN0RUN6QTh5RlN1Vll1cE9VWWdyVG1mUWVLZS85QmFEV2FnYXE3b3c5K0kySXZzZldGdmxyRDhRUXI4c2VhNnEKeGpxN1RWNjdWYjRSeEJhb1lEQSt5STV2SWN1aldVeFVMdW42NGx1M1E2aUMxc2oyVW5tVXBJZGdhelJYWEVrWgp2eEE2RWJBbm94QTArbEJPbjFDWldsMjNJUTRzNzBvMmhaN3dJcC92ZXZCODhSUlJqcXR2Z2M1ZWxzanNibURGCkxTN0wxWnV5ZThjNmdTOTNiUitWalZtU0lmcjFJRXEwNzQ4dElJeVhqQVZDV1BWQ3Z1UDQxTWxmUGMvSlZwWkQKdUQyK3BPNlpZUkVjZEFuT2YyZUQ0L2VMT01La280TDFkU0Z5OUpLTTVQTG5PQzBaazBBWU9kMXZTOERUQWZ4agpYUEVJWThPQllGaGxzeGY0VEU4Q0F3RUFBYU1qTUNFd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFEZ2dFQkFIL09ZcTh6eWwxK3pTVG11b3czeUkvMTVQTDEKZGw4aEI3SUtuWk5XbUMvTFRkbS8rbm9oM1NiMUlkUnY2SGtLZy9HVW4wVU11UlVuZ0xoanUzRU80b3pKUFFjWApxdWF4emdtVEtOV0o2RXJEdlJ2V2hHWDBaY2JkQmZaditkb3d5UnF6ZDVubEo0OWhDK05ydEZGUXE2UDA1QlluCjdTZW1ndXFlWG1Yd0lqMlNhKzFEZVI2bFJtOW84c2hBWWpueVRoVUZxYU1uMThrSTNTQU5KNXZrLzNERnJQRU8KQ0tDOUV6Rmt1Mmt1eGcyZE0xMlBiUkdaUTJvMEs2SEVaZ3JySUtUUE95M29jYjhyOU0wYVNGaGpPVi9OcUdBNApTYXVwWFNXNlhmdklpL1VIb0liVTNwTmNzblVKR25RZlF2aXA5NVhLay9ncWNVcittNTB2eGd1bXh0QT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQ==
+//     server: https://cluster-a.com
+//   name: cluster-a
+// contexts:
+// - context:
+//     cluster: cluster-a
+//     namespace: ns-a
+//     user: user-a
+//   name: context-a
+// current-context: context-a
+// users:
+// - name: user-a
+//   user:
+//     token: mytoken-a
+// `)
+// 			_, err = bootstrapKubeConf.Write(testbootstrapKubeconfigValid)
+// 			Expect(err).NotTo(HaveOccurred())
+// 			err = handleBootstrapFlow(klogr.New(), "")
+// 			Expect(err).Should(HaveOccurred())
+// 			Expect(err.Error()).Should(ContainSubstring("kubeconfig generation failed: hostname is not valid"))
+// 		})
+// 	})
+// })

@@ -5,17 +5,15 @@ package main
 
 import (
 	"context"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/go-logr/logr"
 	pflag "github.com/spf13/pflag"
+	"github.com/vmware-tanzu/cluster-api-provider-bringyourownhost/agent/certrotation"
 	"github.com/vmware-tanzu/cluster-api-provider-bringyourownhost/agent/cloudinit"
 	"github.com/vmware-tanzu/cluster-api-provider-bringyourownhost/agent/reconciler"
 	"github.com/vmware-tanzu/cluster-api-provider-bringyourownhost/agent/registration"
@@ -157,11 +155,14 @@ func main() {
 	// Enable bootstrap flow if --bootstrap-kubeconfig is provided
 	// and config doesn't already exists in ~/.byoh/
 	if bootstrapKubeConfig != "" && errors.Is(err, os.ErrNotExist) {
-		if err = handleBootstrapFlow(logger, hostName); err != nil {
+		if err = registration.HandleBootstrapFlow(logger, bootstrapKubeConfig, hostName, certExpiryDuration); err != nil {
 			logger.Error(err, "bootstrap flow failed")
 			os.Exit(1)
 		}
 	}
+	// TODO: Handle the case where bootstrap-kubeconfig is not provided
+	// and there is no config in ~/.byoh/
+
 	// Handle restart flow or if the ~/.byoh/config already exists
 	config := getConfig(logger)
 	k8sClient := getClient(logger, config)
@@ -175,13 +176,23 @@ func main() {
 	// Start certificate rotation goroutine.
 	// This is behind a feature flag for now. Set 'CERTIFICATE_ROTATION=true' to enable it.
 	if os.Getenv("CERTIFICATE_ROTATION") == "true" {
+		logger.Info("certificate rotation enabled")
+		byohCertRotation := &certrotation.BYOHCertificateRotation{
+			Logger:                    logger,
+			HostName:                  hostName,
+			BYOHConfig:                config,
+			BootstrapKubeconfigPath:   bootstrapKubeConfig,
+			CertificateExpiryDuration: certExpiryDuration,
+		}
 		go func() {
-			err = certificateRotation(logger, hostName, config)
+			err = byohCertRotation.RotateCertificate()
 			if err != nil {
 				logger.Error(err, "certificate rotation failed")
 				return
 			}
 		}()
+	} else {
+		logger.Info("Manually rotate the certificate before expiry. To automate this flow, set the CERTIFICATE_ROTATION environment variable on the agent")
 	}
 
 	mgr, err := ctrl.NewManager(config, ctrl.Options{
@@ -223,54 +234,6 @@ func main() {
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		logger.Error(err, "problem running manager")
 		return
-	}
-}
-
-func handleBootstrapFlow(logger logr.Logger, hostName string) error {
-	logger.Info("initiated bootstrap kubeconfig flow")
-	bootstrapClientConfig, err := registration.LoadRESTClientConfig(bootstrapKubeConfig)
-	if err != nil {
-		return fmt.Errorf("client config load failed: %v", err)
-	}
-	byohCSR, err := registration.NewByohCSR(bootstrapClientConfig, logger, certExpiryDuration)
-	if err != nil {
-		return fmt.Errorf("ByohCSR intialization failed: %v", err)
-	}
-	err = byohCSR.BootstrapKubeconfig(hostName)
-	if err != nil {
-		return fmt.Errorf("kubeconfig generation failed: %v", err)
-	}
-	return nil
-}
-
-func certificateRotation(logger logr.Logger, hostName string, config *rest.Config) error {
-	for {
-		block, _ := pem.Decode(config.CertData)
-		if block == nil || block.Type != "CERTIFICATE" {
-			logger.Info("failed to decode PEM block containing certificate")
-			return nil
-		}
-
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			logger.Error(err, "Certifcate parse failed")
-			return err
-		}
-
-		totalTimeCert := cert.NotAfter.Sub(cert.NotBefore)
-
-		// if less than 20% time left, renew the certs
-		if time.Now().After(cert.NotAfter.Add(totalTimeCert / -5)) {
-			logger.Info("certificate expiration time left is less than 20%, renewing")
-			if err = handleBootstrapFlow(logger, hostName); err != nil {
-				logger.Error(err, "bootstrap flow failed")
-			}
-		} else {
-			logger.Info("certificate are valid", "will be renewed after", cert.NotAfter.Add(totalTimeCert/-5))
-		}
-
-		// Poll after every 4 seconds
-		time.Sleep(4 * time.Second) //nolint
 	}
 }
 
