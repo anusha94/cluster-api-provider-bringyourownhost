@@ -6,14 +6,23 @@ package main
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"time"
+
+	crand "crypto/rand"
 
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -31,9 +40,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
 var _ = Describe("Agent", func() {
@@ -808,6 +823,24 @@ kovW9X7Ook/tTW0HyX6D6HRciA==
 			Expect(os.Remove(execLogFile)).ShouldNot(HaveOccurred())
 		})
 	})
+
+	FContext("When kubeconfig cert is about to expire", func() {
+		// set CERTIFICATE_ROTATION env variable
+		// create kubeconfig with < 20% expiry time
+		// build agent binary
+		// run agent
+		// assert if kubeconfig file has changed
+
+		BeforeEach(func() {
+			//os.Setenv("CERTIFICATE_ROTATION", "true")
+			WriteKubeConfig()
+
+		})
+		FIt("should never fail", func() {
+			var err error
+			Expect(err).To(BeNil())
+		})
+	})
 })
 
 var _ = Describe("Agent Unit Tests", func() {
@@ -862,3 +895,181 @@ users:
 		})
 	})
 })
+
+func WriteKubeConfig() {
+	kubeConf, err := ioutil.TempFile("", tmpFilePrefix)
+	Expect(err).NotTo(HaveOccurred())
+	setKubeConfig(kubeConf)
+
+	defer func(config *os.File) {
+		_ = config.Close()
+	}(getKubeConfig())
+
+	user, err := AddUser(envtest.User{
+		Name:   "envtest-admin",
+		Groups: []string{"system:masters"},
+	}, nil)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = writeKubeconfigFromBootstrapping(user, "/home/kokoni/file.txt", user.CertData, user.KeyData)
+	Expect(err).NotTo(HaveOccurred())
+
+	// kubeConfigData, err := user.KubeConfig()
+	// Expect(err).NotTo(HaveOccurred())
+
+	// _, err = getKubeConfig().Write(kubeConfigData)
+	// Expect(err).NotTo(HaveOccurred())
+}
+
+func AddUser(user envtest.User, baseConfig *rest.Config) (*rest.Config, error) {
+
+	// if f.GetAPIServer().SecureServing.Authn == nil {
+	// 	return nil, fmt.Errorf("no API server authentication is configured yet.  The API server defaults one when Start is called, did you mean to use that?")
+	// }
+
+	if baseConfig == nil {
+		baseConfig = &rest.Config{}
+	}
+
+	certs, err := makeCert(certutil.Config{
+		CommonName:   user.Name,
+		Organization: user.Groups,
+		Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to create client certificates for %s: %w", user.Name, err)
+	}
+
+	crt, key, err := AsBytes(&certs)
+	if err != nil {
+		return nil, fmt.Errorf("unable to serialize client certificates for %s: %w", user.Name, err)
+	}
+
+	cfg := rest.CopyConfig(baseConfig)
+	cfg.CertData = crt
+	cfg.KeyData = key
+
+	return cfg, nil
+}
+
+func makeCert(cfg certutil.Config) (CertPair, error) {
+	now := time.Now()
+
+	key, err := newPrivateKey()
+	// if err != nil {
+	// 	return CertPair{}, fmt.Errorf("unable to create private key: %v", err)
+	// }
+
+	serial := new(big.Int).Set(big.NewInt(1))
+	// c.nextSerial.Add(c.nextSerial, bigOne)
+
+	caCfg := certutil.Config{CommonName: "envtest-environment", Organization: []string{"envtest"}}
+	caCert, err := certutil.NewSelfSignedCACert(caCfg, key)
+
+	template := x509.Certificate{
+		Subject:      pkix.Name{CommonName: cfg.CommonName, Organization: cfg.Organization},
+		DNSNames:     cfg.AltNames.DNSNames,
+		IPAddresses:  cfg.AltNames.IPs,
+		SerialNumber: serial,
+
+		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: cfg.Usages,
+
+		NotBefore: now.UTC(),
+
+		// set expiry to 1 minute
+		NotAfter: now.Add(60 * time.Second).UTC(),
+	}
+
+	certRaw, err := x509.CreateCertificate(crand.Reader, &template, caCert, key.Public(), key)
+	if err != nil {
+		return CertPair{}, fmt.Errorf("unable to create certificate: %v", err)
+	}
+
+	cert, err := x509.ParseCertificate(certRaw)
+	if err != nil {
+		return CertPair{}, fmt.Errorf("generated invalid certificate, could not parse: %v", err)
+	}
+
+	return CertPair{
+		Key:  key,
+		Cert: cert,
+	}, nil
+}
+
+// newPrivateKey generates a new private key of a relatively sane size (see
+// rsaKeySize).
+func newPrivateKey() (crypto.Signer, error) {
+	ellipticCurve := elliptic.P256()
+	return ecdsa.GenerateKey(ellipticCurve, crand.Reader)
+}
+
+// CertPair is a private key and certificate for use for client auth, as a CA, or serving.
+type CertPair struct {
+	Key  crypto.Signer
+	Cert *x509.Certificate
+}
+
+// AsBytes encodes keypair in the appropriate formats for on-disk storage (PEM and
+// PKCS8, respectively).
+func AsBytes(certPair *CertPair) (cert []byte, key []byte, err error) {
+	cert = CertBytes(certPair)
+
+	rawKeyData, err := x509.MarshalPKCS8PrivateKey(certPair.Key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("unable to encode private key: %v", err)
+	}
+
+	key = pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: rawKeyData,
+	})
+
+	return cert, key, nil
+}
+
+// CertBytes returns the PEM-encoded version of the certificate for this pair.
+func CertBytes(certPair *CertPair) []byte {
+	return pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certPair.Cert.Raw,
+	})
+}
+
+// this function is copied from csr.go
+// writeKubeconfigFromBootstrapping will write the new kubeconfig fetching
+// some details from bootstrap client config and using key/cert details
+func writeKubeconfigFromBootstrapping(bootstrapClientConfig *restclient.Config, kubeconfigPath string, certData, keyData []byte) error {
+	// Get the CA data from the bootstrap client config.
+	caFile, caData := bootstrapClientConfig.CAFile, []byte{}
+	if caFile == "" {
+		caData = bootstrapClientConfig.CAData
+	}
+
+	// Build resulting kubeconfig.
+	kubeconfigData := clientcmdapi.Config{
+		// Define a cluster stanza based on the bootstrap kubeconfig.
+		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
+			Server:                   bootstrapClientConfig.Host,
+			InsecureSkipTLSVerify:    bootstrapClientConfig.Insecure,
+			CertificateAuthority:     caFile,
+			CertificateAuthorityData: caData,
+		}},
+		// Define auth based on the obtained client cert.
+		AuthInfos: map[string]*clientcmdapi.AuthInfo{"default-auth": {
+			ClientCertificateData: certData,
+			ClientKeyData:         keyData,
+		}},
+		// Define a context that connects the auth info and cluster, and set it as the default
+		Contexts: map[string]*clientcmdapi.Context{"default-context": {
+			Cluster:   "default-cluster",
+			AuthInfo:  "default-auth",
+			Namespace: "default",
+		}},
+		CurrentContext: "default-context",
+	}
+
+	// Marshal to disk
+	return clientcmd.WriteToFile(kubeconfigData, kubeconfigPath)
+}
